@@ -5,7 +5,7 @@ dataset/
 *.png
 *.mp4
 
-# model checkpoints
+# model weights
 checkpoints/
 *.pth
 *.pt
@@ -14,9 +14,14 @@ checkpoints/
 __pycache__/
 *.pyc
 
-# system
-.DS_Store
-.env
-
-# notebooks
+# notebook cache
 .ipynb_checkpoints/
+
+# logs
+training_logs/
+
+# vscode
+.vscode/
+
+# env
+.env
