@@ -1,0 +1,22 @@
+# dataset
+data/
+dataset/
+*.jpg
+*.png
+*.mp4
+
+# model checkpoints
+checkpoints/
+*.pth
+*.pt
+
+# python cache
+__pycache__/
+*.pyc
+
+# system
+.DS_Store
+.env
+
+# notebooks
+.ipynb_checkpoints/
