@@ -206,8 +206,8 @@ def skin_tone_analysis(image: Image.Image, face_bbox: Optional[Tuple] = None) ->
     # Convert to YCrCb for skin detection
     ycrcb = cv2.cvtColor(roi, cv2.COLOR_BGR2YCrCb)
     # Skin range in YCrCb
-    lower = np.array([0, 133, 77], dtype=np.uint8)
-    upper = np.array([255, 173, 127], dtype=np.uint8)
+    lower = np.array([0, 120, 70], dtype=np.uint8)
+    upper = np.array([255, 185, 145], dtype=np.uint8)
     skin_mask = cv2.inRange(ycrcb, lower, upper)
     skin_pixels = roi[skin_mask > 0]
 

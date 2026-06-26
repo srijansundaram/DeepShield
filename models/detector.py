@@ -164,7 +164,6 @@ class EfficientNetDetector(nn.Module):
 
 class EnsembleDetector:
     def __init__(self, device="cpu"):
-        global MODEL_IS_TRAINED
         self.device = device
 
         # Seed before model init — ensures untrained weights are identical every run
@@ -177,6 +176,7 @@ class EnsembleDetector:
         torch.manual_seed(42)
         self.efficientnet = EfficientNetDetector().to(device)
 
+        global MODEL_IS_TRAINED
         loaded = False
         for fname, model_obj in [
             ("xception_deepfake.pth",     self.xception.model),
@@ -195,6 +195,7 @@ class EnsembleDetector:
                     print(f"⚠ Failed to load {fname}: {e}")
 
         MODEL_IS_TRAINED = loaded
+        self.is_trained = loaded
         self.xception.eval()
         self.efficientnet.eval()
 
@@ -207,12 +208,12 @@ class EnsembleDetector:
         img_rgb = image.convert("RGB")
         with torch.no_grad():
             x_t    = TRANSFORM(img_rgb).unsqueeze(0).to(self.device)
-            x_prob = torch.softmax(self.xception(x_t), dim=1)[0, 1].item()
+            x_prob = torch.softmax(self.xception(x_t), dim=1)[0, 0].item()
             e_t    = TRANSFORM_EFF(img_rgb).unsqueeze(0).to(self.device)
-            e_prob = torch.softmax(self.efficientnet(e_t), dim=1)[0, 1].item()
+            e_prob = torch.softmax(self.efficientnet(e_t), dim=1)[0, 0].item()
 
         fake_prob = 0.55 * x_prob + 0.45 * e_prob
-        is_fake   = fake_prob > 0.5
+        is_fake   = fake_prob > 0.6
         return {
             "is_fake":            is_fake,
             "confidence":         fake_prob if is_fake else (1 - fake_prob),
