@@ -158,20 +158,39 @@ def analyze_video(
 
     video_duration = total_frames / fps
 
+    # Audio-visual sync analysis
+    try:
+        from utils.av_sync import analyze_av_sync
+        av_result = analyze_av_sync(video_path)
+    except Exception:
+        av_result = None
+
+    # Face identity consistency analysis
+    try:
+        from utils.identity_consistency import analyze_identity_consistency
+        identity_result = analyze_identity_consistency(frames)
+    except Exception as e:
+        identity_result = {
+            "identity_score": 1.0, "drift_events": [], "similarities": [],
+            "faces_found": 0, "note": f"Identity analysis failed: {e}",
+        }
+
     return {
-        "is_fake": is_fake,
-        "verdict": "Deepfake" if is_fake else "Real",
-        "fake_probability": avg_fake_prob,
-        "real_probability": 1 - avg_fake_prob,
-        "confidence": avg_fake_prob if is_fake else 1 - avg_fake_prob,
-        "frames_analyzed": len(frames),
-        "total_frames": total_frames,
-        "video_duration": round(video_duration, 1),
-        "fps": round(fps, 1),
+        "is_fake":             is_fake,
+        "verdict":             "Deepfake" if is_fake else "Real",
+        "fake_probability":    avg_fake_prob,
+        "real_probability":    1 - avg_fake_prob,
+        "confidence":          avg_fake_prob if is_fake else 1 - avg_fake_prob,
+        "frames_analyzed":     len(frames),
+        "total_frames":        total_frames,
+        "video_duration":      round(video_duration, 1),
+        "fps":                 round(fps, 1),
         "fake_probs_timeline": fake_probs,
-        "frame_results": frame_results,
-        "temporal": temporal,
-        "blink_analysis": blink,
-        "peak_frame": peak_frame,
-        "peak_frame_idx": peak_idx,
+        "frame_results":       frame_results,
+        "temporal":            temporal,
+        "blink_analysis":      blink,
+        "peak_frame":          peak_frame,
+        "peak_frame_idx":      peak_idx,
+        "av_sync":             av_result,   
+        "identity_consistency": identity_result,
     }

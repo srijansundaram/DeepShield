@@ -1,0 +1,50 @@
+[
+  {
+    "dataset": "DFDC Validation",
+    "n_samples": 1000,
+    "n_real": 500,
+    "n_fake": 500,
+    "accuracy": 90.1,
+    "auc": 0.9517,
+    "precision": 0.9067,
+    "recall": 0.894,
+    "f1": 0.9003,
+    "false_positive_rate": 0.092,
+    "errors": 0,
+    "inference_ms_per_image": 41.5,
+    "confusion_matrix": [
+      [
+        454,
+        46
+      ],
+      [
+        53,
+        447
+      ]
+    ]
+  },
+  {
+    "dataset": "DFDC Train",
+    "n_samples": 1000,
+    "n_real": 500,
+    "n_fake": 500,
+    "accuracy": 99.0,
+    "auc": 0.9996,
+    "precision": 1.0,
+    "recall": 0.98,
+    "f1": 0.9899,
+    "false_positive_rate": 0.0,
+    "errors": 0,
+    "inference_ms_per_image": 41.4,
+    "confusion_matrix": [
+      [
+        500,
+        0
+      ],
+      [
+        10,
+        490
+      ]
+    ]
+  }
+]

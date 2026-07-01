@@ -128,7 +128,7 @@ def analyze_faces(image_bgr: np.ndarray, detector) -> Dict:
 
     # Average probability across all faces
     avg_conf = float(np.mean([fr["fake_probability"] for fr in face_results]))
-    is_fake = avg_conf > 0.60
+    is_fake = avg_conf > 0.50
 
     annotated = annotate_image(image_bgr, face_results)
 
@@ -143,6 +143,7 @@ def analyze_faces(image_bgr: np.ndarray, detector) -> Dict:
             "verdict": "Deepfake" if is_fake else "Real",
             "xception_score": float(np.mean([fr.get("xception_score", 0) for fr in face_results])),
             "efficientnet_score": float(np.mean([fr.get("efficientnet_score", 0) for fr in face_results])),
+            "model_trained": face_results[0].get("model_trained", False) if face_results else False,  # ← add this line
         },
         "annotated": annotated,
     }

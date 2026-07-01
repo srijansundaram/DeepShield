@@ -1,6 +1,6 @@
 """
 DeepShield — Core Detection Models
-XceptionNet + EfficientNet-B4 Ensemble with GradCAM
+XceptionNet + EfficientNet-B4 + ViT Ensemble with GradCAM + Temperature Calibration
 """
 
 import torch
@@ -12,6 +12,7 @@ from PIL import Image
 import cv2
 import timm
 import os
+import json
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -27,6 +28,12 @@ TRANSFORM_EFF = T.Compose([
     T.Resize((380, 380)),
     T.ToTensor(),
     T.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+])
+
+TRANSFORM_VIT = T.Compose([
+    T.Resize((224, 224)),
+    T.ToTensor(),
+    T.Normalize(mean=[0.5, 0.5, 0.5], std=[0.5, 0.5, 0.5]),
 ])
 
 
@@ -48,8 +55,29 @@ def _find_checkpoint(filename):
     return None
 
 
+def _load_calibration(checkpoint_dir=None):
+    search = []
+    if checkpoint_dir:
+        search.append(os.path.join(checkpoint_dir, "calibration.json"))
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    search += [
+        os.path.join(script_dir, "..", "checkpoints", "calibration.json"),
+        os.path.join(os.getcwd(), "checkpoints", "calibration.json"),
+    ]
+    for p in search:
+        p = os.path.normpath(p)
+        if os.path.exists(p):
+            with open(p) as f:
+                cal = json.load(f)
+            print(f"  ✓ Loaded calibration: xception_T={cal.get('xception_T',1.0)}, "
+                  f"efficientnet_T={cal.get('efficientnet_T',1.0)}, "
+                  f"vit_T={cal.get('vit_T',1.0)}")
+            return cal
+    print("  ⚠ No calibration.json found — using T=1.0 (uncalibrated)")
+    return {"xception_T": 1.0, "efficientnet_T": 1.0, "vit_T": 1.0}
+
+
 def _face_region_heatmap(size=299):
-    """Gaussian blob on face center — always-valid fallback."""
     cx, cy = size // 2, int(size * 0.42)
     Y, X = np.ogrid[:size, :size]
     dist = np.sqrt((X - cx) ** 2 + (Y - cy) ** 2)
@@ -58,7 +86,6 @@ def _face_region_heatmap(size=299):
 
 
 def _get_fc(model):
-    """Find final Linear layer in any timm model."""
     for attr in ['fc', 'classifier']:
         layer = getattr(model, attr, None)
         if isinstance(layer, nn.Linear):
@@ -84,21 +111,13 @@ class XceptionDetector(nn.Module):
         return self.model(x)
 
     def get_gradcam(self, x: torch.Tensor, class_idx: int = 1) -> np.ndarray:
-        """
-        GradCAM by hooking AFTER bn4 (last BN, outputs 2048ch).
-        bn4 output → global_pool → flatten → fc
-        No inplace ops in this path.
-        Xception forward:  ... block12(1024ch) → conv4(1536ch) → bn4(2048ch) → act4[inplace!] → pool → fc
-        We hook bn4 output (before the inplace act4), then do F.relu ourselves.
-        """
         self.eval()
         storage = {}
 
         def hook_bn4(m, i, o):
-            storage['bn4'] = o.clone()   # clone before inplace act4 modifies it
+            storage['bn4'] = o.clone()
 
         handle = self.model.bn4.register_forward_hook(hook_bn4)
-
         try:
             with torch.no_grad():
                 _ = self.model(x.clone())
@@ -108,10 +127,7 @@ class XceptionDetector(nn.Module):
             if feats_raw is None:
                 return _face_region_heatmap(299)
 
-            # Attach grad to bn4 output (after cloning, no inplace issue)
             feats = feats_raw.detach().clone().requires_grad_(True)
-
-            # Apply ReLU ourselves (non-inplace) then pool → fc
             x2 = F.relu(feats, inplace=False)
             x2 = self.model.global_pool(x2)
             x2 = x2.flatten(1)
@@ -126,13 +142,11 @@ class XceptionDetector(nn.Module):
             if feats.grad is None:
                 return _face_region_heatmap(299)
 
-            # Grad-CAM
-            grads   = feats.grad[0]         # [C, H, W]
-            acts    = feats.detach()[0]      # [C, H, W]
-            weights = grads.mean(dim=(1, 2)) # [C]
+            grads   = feats.grad[0]
+            acts    = feats.detach()[0]
+            weights = grads.mean(dim=(1, 2))
             cam     = F.relu(
-                (weights[:, None, None] * acts).sum(0),
-                inplace=False
+                (weights[:, None, None] * acts).sum(0), inplace=False
             ).cpu().numpy()
 
             if cam.max() <= cam.min():
@@ -162,22 +176,38 @@ class EfficientNetDetector(nn.Module):
         return self.model(x)
 
 
+class ViTDetector(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.model = timm.create_model("vit_base_patch16_224", pretrained=False, num_classes=2)
+
+    def forward(self, x):
+        return self.model(x)
+
+
 class EnsembleDetector:
     def __init__(self, device="cpu"):
         self.device = device
 
-        # Seed before model init — ensures untrained weights are identical every run
         torch.manual_seed(42)
         if device == "cuda":
             torch.cuda.manual_seed(42)
 
         self.xception     = XceptionDetector().to(device)
-
         torch.manual_seed(42)
         self.efficientnet = EfficientNetDetector().to(device)
+        torch.manual_seed(42)
+        self.vit          = ViTDetector().to(device)
+
+        self.calibration    = _load_calibration()
+        self.xception_T     = self.calibration.get("xception_T", 1.0)
+        self.efficientnet_T = self.calibration.get("efficientnet_T", 1.0)
+        self.vit_T          = self.calibration.get("vit_T", 1.0)
 
         global MODEL_IS_TRAINED
         loaded = False
+        vit_loaded = False
+
         for fname, model_obj in [
             ("xception_deepfake.pth",     self.xception.model),
             ("efficientnet_deepfake.pth", self.efficientnet.model),
@@ -194,27 +224,57 @@ class EnsembleDetector:
                 except Exception as e:
                     print(f"⚠ Failed to load {fname}: {e}")
 
+        # ViT is optional — ensemble degrades gracefully without it
+        vit_path = _find_checkpoint("vit_deepfake.pth")
+        if vit_path:
+            try:
+                state = torch.load(vit_path, map_location=device, weights_only=True)
+                if isinstance(state, dict) and "state_dict" in state:
+                    state = state["state_dict"]
+                self.vit.model.load_state_dict(state, strict=False)
+                print(f"✓ Loaded: vit_deepfake.pth")
+                vit_loaded = True
+            except Exception as e:
+                print(f"⚠ Failed to load vit_deepfake.pth: {e}")
+
+        self.vit_loaded = vit_loaded
         MODEL_IS_TRAINED = loaded
         self.is_trained = loaded
+
         self.xception.eval()
         self.efficientnet.eval()
+        self.vit.eval()
 
         if loaded:
-            print("✅ Trained model loaded — real predictions enabled!")
+            vit_status = "+ ViT" if vit_loaded else "(ViT not yet trained)"
+            print(f"✅ Trained model loaded — XceptionNet + EfficientNet-B4 {vit_status}")
         else:
             print("⚠ No checkpoint found — running in demo mode")
 
     def predict_image(self, image):
         img_rgb = image.convert("RGB")
         with torch.no_grad():
-            x_t    = TRANSFORM(img_rgb).unsqueeze(0).to(self.device)
-            x_prob = torch.softmax(self.xception(x_t), dim=1)[0, 0].item()
-            e_t    = TRANSFORM_EFF(img_rgb).unsqueeze(0).to(self.device)
-            e_prob = torch.softmax(self.efficientnet(e_t), dim=1)[0, 0].item()
+            x_t      = TRANSFORM(img_rgb).unsqueeze(0).to(self.device)
+            x_logits = self.xception(x_t)
+            x_prob   = torch.softmax(x_logits / self.xception_T, dim=1)[0, 0].item()
 
-        fake_prob = 0.55 * x_prob + 0.45 * e_prob
-        is_fake   = fake_prob > 0.6
-        return {
+            e_t      = TRANSFORM_EFF(img_rgb).unsqueeze(0).to(self.device)
+            e_logits = self.efficientnet(e_t)
+            e_prob   = torch.softmax(e_logits / self.efficientnet_T, dim=1)[0, 0].item()
+
+            if self.vit_loaded:
+                v_t      = TRANSFORM_VIT(img_rgb).unsqueeze(0).to(self.device)
+                v_logits = self.vit(v_t)
+                v_prob   = torch.softmax(v_logits / self.vit_T, dim=1)[0, 0].item()
+                # Three model ensemble: Xception 40%, EfficientNet 35%, ViT 25%
+                fake_prob = 0.40 * x_prob + 0.35 * e_prob + 0.25 * v_prob
+            else:
+                # Fallback to two-model ensemble
+                fake_prob = 0.55 * x_prob + 0.45 * e_prob
+                v_prob    = None
+
+        is_fake = fake_prob > 0.5
+        result = {
             "is_fake":            is_fake,
             "confidence":         fake_prob if is_fake else (1 - fake_prob),
             "fake_probability":   fake_prob,
@@ -224,6 +284,9 @@ class EnsembleDetector:
             "verdict":            "Deepfake" if is_fake else "Real",
             "model_trained":      MODEL_IS_TRAINED,
         }
+        if v_prob is not None:
+            result["vit_score"] = v_prob
+        return result
 
     def get_gradcam(self, image, class_idx=1):
         img_rgb = image.convert("RGB")

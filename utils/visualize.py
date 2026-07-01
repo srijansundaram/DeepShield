@@ -139,6 +139,51 @@ def render_timeline_chart(
     buf.seek(0)
     return Image.open(buf).copy()
 
+# ──────────────────────────────────────────────
+# Identity Consistency Chart (Tier 3, Item 2)
+# ──────────────────────────────────────────────
+def render_identity_chart(
+    similarities: List[Optional[float]],
+    timestamps: Optional[List[float]] = None,
+    threshold: float = 0.45,
+    width: int = 500,
+    height: int = 180,
+) -> Image.Image:
+    """Render per-frame identity similarity-to-reference chart."""
+    valid_idx = [i for i, s in enumerate(similarities) if s is not None]
+    if not valid_idx:
+        return Image.new("RGB", (width, height), (245, 245, 245))
+
+    x_all = timestamps if timestamps and len(timestamps) == len(similarities) else list(range(len(similarities)))
+    x = [x_all[i] for i in valid_idx]
+    y = [similarities[i] for i in valid_idx]
+
+    fig, ax = plt.subplots(figsize=(width / 100, height / 100), dpi=100)
+    fig.patch.set_facecolor("#F8F8F8")
+    ax.set_facecolor("#F8F8F8")
+
+    colors = ["#E24B4A" if s < threshold else "#2563EB" for s in y]
+    ax.scatter(x, y, c=colors, s=18, zorder=3)
+    ax.plot(x, y, color="#9CA3AF", linewidth=1, alpha=0.6, zorder=2)
+    ax.axhline(threshold, color="#D97706", linestyle="--", linewidth=0.8, alpha=0.8, label="Drift threshold")
+
+    ax.set_ylim(min(0, min(y) - 0.05), 1.02)
+    ax.set_ylabel("Similarity to reference", fontsize=8, color="#5F5E5A")
+    ax.set_xlabel("Time (s)" if timestamps else "Frame", fontsize=8, color="#5F5E5A")
+    ax.tick_params(labelsize=7, colors="#5F5E5A")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    for spine in ax.spines.values():
+        spine.set_color("#D3D1C7")
+    ax.set_title("Face identity consistency across frames", fontsize=9, color="#444441", pad=6)
+    ax.legend(fontsize=7, frameon=False, loc="lower left")
+
+    plt.tight_layout(pad=0.5)
+    buf = io.BytesIO()
+    plt.savefig(buf, format="PNG", bbox_inches="tight", facecolor=fig.get_facecolor())
+    plt.close(fig)
+    buf.seek(0)
+    return Image.open(buf).copy()
 
 # ──────────────────────────────────────────────
 # Confidence Gauge
@@ -204,6 +249,52 @@ def render_model_bars(xception_score: float, efficientnet_score: float) -> Image
     ax.spines["left"].set_color("#D3D1C7")
     plt.tight_layout(pad=0.4)
 
+    buf = io.BytesIO()
+    plt.savefig(buf, format="PNG", bbox_inches="tight")
+    plt.close(fig)
+    buf.seek(0)
+    return Image.open(buf).copy()
+
+# ──────────────────────────────────────────────
+# Explainability Chart (Tier 3, Item 1)
+# ──────────────────────────────────────────────
+def render_explainability_chart(signals: List[Dict]) -> Image.Image:
+    """Horizontal bar chart showing normalized contribution of each detection signal."""
+    if not signals:
+        return Image.new("RGB", (500, 100), (245, 245, 245))
+
+    names = [s["name"] for s in signals]
+    pcts  = [s["contribution_pct"] for s in signals]
+    cats  = [s["category"] for s in signals]
+
+    fig_h = max(1.8, 0.5 * len(signals) + 0.6)
+    fig, ax = plt.subplots(figsize=(6, fig_h), dpi=100)
+    fig.patch.set_facecolor("#FAFAFA")
+    ax.set_facecolor("#FAFAFA")
+
+    colors = ["#2563EB" if c == "model" else "#9333EA" for c in cats]
+    bars = ax.barh(names[::-1], pcts[::-1], color=colors[::-1], height=0.5, alpha=0.9)
+
+    for bar, pct in zip(bars, pcts[::-1]):
+        ax.text(pct + 1, bar.get_y() + bar.get_height() / 2, f"{pct}%",
+                va="center", fontsize=8, color="#444441")
+
+    ax.set_xlim(0, max(pcts) * 1.25 if pcts else 1)
+    ax.set_xlabel("Contribution to verdict (%)", fontsize=8, color="#5F5E5A")
+    ax.tick_params(labelsize=8, colors="#374151")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.spines["bottom"].set_color("#D3D1C7")
+    ax.spines["left"].set_color("#D3D1C7")
+
+    from matplotlib.patches import Patch
+    legend_elems = [
+        Patch(facecolor="#2563EB", label="Ensemble model"),
+        Patch(facecolor="#9333EA", label="Forensic signal (advisory)"),
+    ]
+    ax.legend(handles=legend_elems, loc="lower right", fontsize=7, frameon=False)
+
+    plt.tight_layout(pad=0.6)
     buf = io.BytesIO()
     plt.savefig(buf, format="PNG", bbox_inches="tight")
     plt.close(fig)

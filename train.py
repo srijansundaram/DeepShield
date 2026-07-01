@@ -116,12 +116,18 @@ def train_model(
         train_tf = get_transforms(img_size, is_train=True)
         val_tf   = get_transforms(img_size, is_train=False)
         ckpt_name = "xception_deepfake.pth"
-    else:
+    elif model_name == "efficientnet_b4":
         model = timm.create_model("efficientnet_b4", pretrained=pretrained, num_classes=2)
         img_size = 380
         train_tf = get_transforms_eff(img_size, is_train=True)
         val_tf   = get_transforms_eff(img_size, is_train=False)
         ckpt_name = "efficientnet_deepfake.pth"
+    else:
+        model = timm.create_model("vit_base_patch16_224", pretrained=pretrained, num_classes=2)
+        img_size = 224
+        train_tf = get_transforms(img_size, is_train=True)
+        val_tf   = get_transforms(img_size, is_train=False)
+        ckpt_name = "vit_deepfake.pth"
 
     model = model.to(device)
 
@@ -233,7 +239,7 @@ def train_model(
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("--model",        type=str,   default="xception",
-                   choices=["xception", "efficientnet_b4"])
+                   choices=["xception", "efficientnet_b4", "vit"])
     p.add_argument("--data_dir",     type=str,   default="./data")
     p.add_argument("--output_dir",   type=str,   default="./checkpoints")
     p.add_argument("--epochs",       type=int,   default=20)

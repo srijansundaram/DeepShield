@@ -1,0 +1,37 @@
+============================================================
+  DeepShield — Cross-dataset Benchmark Report
+============================================================
+
+  Dataset   : DFDC Validation
+  Samples   : 1000 (500 real, 500 fake)
+  Accuracy  : 90.1%
+  AUC-ROC   : 0.9517
+  F1 Score  : 0.9003
+  Precision : 0.9067
+  Recall    : 0.894
+  FP Rate   : 0.092
+  Speed     : 41.5ms/image
+
+  Confusion Matrix (rows=actual, cols=predicted):
+               Pred Real  Pred Fake
+  Actual Real  454        46
+  Actual Fake  53         447
+
+------------------------------------------------------------
+
+  Dataset   : DFDC Train
+  Samples   : 1000 (500 real, 500 fake)
+  Accuracy  : 99.0%
+  AUC-ROC   : 0.9996
+  F1 Score  : 0.9899
+  Precision : 1.0
+  Recall    : 0.98
+  FP Rate   : 0.0
+  Speed     : 41.4ms/image
+
+  Confusion Matrix (rows=actual, cols=predicted):
+               Pred Real  Pred Fake
+  Actual Real  500        0
+  Actual Fake  10         490
+
+------------------------------------------------------------
