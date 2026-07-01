@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.gitignore
+*.md
+*.ipynb
+checkpoints/
+datasets/
+benchmark/
+.streamlit/
+*.log
+*.json
+node_modules/

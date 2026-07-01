@@ -349,7 +349,7 @@ Note: `utils/identity_consistency.py` automatically downloads the InsightFace `b
 
 ## Roadmap
 
-- [ ] **Docker deployment** — one-command containerized deployment for enterprise environments (in progress)
+- [x] **Docker deployment** — one-command containerized deployment. Build: `docker build -t deepshield:latest .` · Run: `docker run -p 8501:8501 -p 8000:8000 -v /path/to/checkpoints:/app/checkpoints:z deepshield:latest`
 
 ---
 
